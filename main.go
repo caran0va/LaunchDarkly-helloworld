@@ -26,13 +26,15 @@ const featureFlagKey = "my-flag"
 func main() {
 
 	wg := sync.WaitGroup{}
+
+	//load .env (contains sdkKey)
 	if err := godotenv.Load(".env"); err != nil {
 		log.Fatal("Error loading .env file")
 	}
 
 	sdkKey = os.Getenv("LD_SDKKEY")
 	if sdkKey == "" {
-		log.Fatal("Please edit main.go to set sdkKey to your LaunchDarkly SDK key first")
+		log.Fatal("Please edit .env to set sdkKey to your LaunchDarkly SDK key first")
 	}
 
 	client, _ := ld.MakeClient(sdkKey, 5*time.Second)
@@ -45,11 +47,11 @@ func main() {
 	SetupCloseHandler(client, &wg)
 	// Set up the evaluation context. This context should appear on your LaunchDarkly contexts dashboard
 	// soon after you run the demo.
-	context := ldcontext.NewBuilder("helloworld-context-key").
-		Name("Cara").
-		Build()
-	go checkFlag(context, client)
+	context := ldcontext.NewBuilder("helloworld-context-key").Name("Cara").Build()
 
+	//periodically check LD for flag update
+	go checkFlag(context, client)
+	//listens for changes in internal flag variable changes, and notifies the log to let us know featureflag change
 	go listenToFlag()
 
 	wg.Wait()
@@ -69,10 +71,9 @@ func listenToFlag() {
 }
 
 func checkFlag(context ldcontext.Context, client *ld.LDClient) {
-
 	for {
-		time.Sleep(time.Second)
-		flagValue, err := client.BoolVariation(featureFlagKey, context, false)
+		time.Sleep(time.Second)                                                // dont want to be sending this request constantly, 1 second delay is enough for LD to keep up though it seems.
+		flagValue, err := client.BoolVariation(featureFlagKey, context, false) // checks LD for boolean flag value
 		if err != nil {
 			log.Printf("error: " + err.Error())
 		}
@@ -82,6 +83,7 @@ func checkFlag(context ldcontext.Context, client *ld.LDClient) {
 	}
 }
 
+// sets up a handler that waits forSIGTERM or os.interrupt (control-C) and gracefully closes LDClient
 func SetupCloseHandler(client *ld.LDClient, wg *sync.WaitGroup) {
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
